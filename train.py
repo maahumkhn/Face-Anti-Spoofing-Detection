@@ -14,7 +14,7 @@ from src.models import get_model
 
 
 # Creates graph of training and validation loss to visualize model's training ability.
-def plot_loss_curves(train_losses, val_losses, model_name, save_dir="plots"):
+def plot_loss_curves(train_losses, val_losses, graphname="loss.png", model_name="resnet18", save_dir="plots"):
     os.makedirs(save_dir, exist_ok=True)
     epochs = range(1, len(train_losses) + 1)
 
@@ -29,7 +29,7 @@ def plot_loss_curves(train_losses, val_losses, model_name, save_dir="plots"):
     plt.grid(True, linestyle='--', alpha=0.6)
     plt.tight_layout()
 
-    save_path = os.path.join(save_dir, f"{model_name}_loss_curve.png")
+    save_path = os.path.join(save_dir, graphname)
     plt.savefig(save_path)
     plt.close()
     print(f"Loss plot successfully saved to: {save_path}")
@@ -51,19 +51,23 @@ def main():
 
     # Data loader defined in src/dataset.py
     train_loader, val_loader = get_dataloaders(
-        client_train="nuaa_data/raw/client_train_raw.txt",
-        imposter_train="nuaa_data/raw/imposter_train_raw.txt",
-        client_test="nuaa_data/raw/client_test_raw.txt",
-        imposter_test="nuaa_data/raw/imposter_test_raw.txt",
+        lcc_dir="lcc_fasd_data/LCC_FASD",
         batch_size=args.batch_size
     )
 
     model = get_model(args.model).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=1e-3)
 
     train_losses, val_losses = [], []
     start = time.time()
+
+    # Setup saving directory for models and derive filename from graphname
+    models_dir = "models"
+    os.makedirs(models_dir, exist_ok=True)
+    model_filename = os.path.splitext(args.graphname)[0] + ".pth"
+    model_save_path = os.path.join(models_dir, model_filename)
+    best_val_loss = float('inf')
 
     for epoch in range(args.epochs):
         # Training phase
@@ -107,10 +111,16 @@ def main():
               f"Val Loss: {epoch_val_loss:.4f} | "
               f"Val Acc: {acc*100:.2f}%")
 
+        # Save the model weights if this epoch achieved a new best validation loss
+        if epoch_val_loss < best_val_loss:
+            best_val_loss = epoch_val_loss
+            torch.save(model.state_dict(), model_save_path)
+            print(f"--> Saved new best model checkpoint to: {model_save_path}")
+
     print(f"Finished {args.model} in {(time.time() - start)/60:.2f} mins.")
 
     # Save graph for paper
-    plot_loss_curves(train_losses, val_losses, args.graphname)
+    plot_loss_curves(train_losses, val_losses, args.graphname, args.model)
 
 if __name__ == "__main__":
     main()
